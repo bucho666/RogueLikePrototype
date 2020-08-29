@@ -9,17 +9,8 @@ class TitleScene extends game.Scene {
     this.task.add(
       new game.Tasks(new game.SingleTask(()=> {
         message.visible = !message.visible;
-      }).every(0.6).times(6))
-      .add(new game.SingleTask(()=> {
-        if (message.tint == 0xc0c0c0) {
-          message.tint = 0xff0c0c;
-        } else {
-          message.tint = 0xc0c0c0;
-        }
-      }).every(0.12))
-    ).add(new game.SingleTask(()=>{
-      console.log('multi task');
-    }).every(1));
+      }).every(0.6))
+    )
   }
 
   pointerup() {
@@ -27,32 +18,114 @@ class TitleScene extends game.Scene {
   }
 }
 
-class TestScene extends game.Scene {
-  message: game.Text;
-  keyState = new Set<string>();
-  hero: game.Sprite;
-  allow: game.Sprite;
-  setup() {
-    this.message = new game.Text("hello gameLib", 24, 0x0c0c0c0, 0x808080);
-    this.message.point = game.Scene.screen.center;
-    this.message.anchor.set(0.5);
-    this.addChild(this.message);
-    this.hero = new game.Sprite('hero', 0.03);
-    this.hero.tint = 0x33CCCC;
-    this.hero.position.set(64, 64);
-    this.addChild(this.hero);
-    this.allow = new game.Sprite('allow', 0.05);
-    this.allow.visible = false;
-    this.addChild(this.allow)
-    window.addEventListener('keydown', (e: KeyboardEvent) => { this.keyState.add(e.key); }); window.addEventListener('keyup', (e: KeyboardEvent) => { this.keyState.delete(e.key); });
-    game.Audio.play('bgm').volume(0.1).loop();
+class GameObject extends game.Sprite {
+  constructor(protected id: string, animatedSpeed: number=0.03) {
+    super(id, animatedSpeed);
   }
 
-  update() {
-    if (this.keyState.has('l')) { this.hero.x += 3; }
-    if (this.keyState.has('h')) { this.hero.x -= 3; }
-    if (this.keyState.has('j')) { this.hero.y += 3; }
-    if (this.keyState.has('k')) { this.hero.y -= 3; }
+  setPointByGrid(point: game.Point) {
+    this.x = point.x * this.width;
+    this.y = point.y * this.height;
+  }
+}
+
+class Terrain extends GameObject {
+  static terrain = new Map<string, Terrain>();
+  static regist(id: string, tint: number, passable: boolean=false) {
+    Terrain.terrain.set(id, new Terrain(id, tint, passable));
+  }
+
+  private constructor(id: string, tint: number, readonly passable: boolean) {
+    super(id);
+    this.tint = tint;
+  }
+
+  static of(id: string): Terrain {
+    return Terrain.terrain.get(id).clone();
+  }
+
+  clone(): Terrain {
+    return new Terrain(this.id, this.tint, this.passable);
+  }
+}
+
+class Character extends GameObject {
+  constructor(id: string) {
+    super(id);
+  }
+}
+
+class Cell {
+  public character: Character;
+  public terrain: Terrain;
+  removeCharacter() {
+    this.character = undefined;
+  }
+}
+
+class Stage extends game.Container {
+  private cell: Cell[][];
+  private characterPoint = new Map<Character, game.Point>();
+  constructor(width: number, height: number) {
+    super();
+    this.cell = Array.from(
+      new Array(height), () => Array.from(
+        new Array<Cell>(width), ()=> new Cell()
+      )
+    );
+  }
+
+  putTerrain(t: Terrain, point: game.Point) {
+    this.addChild(t);
+    this.at(point).terrain = t;
+    t.setPointByGrid(point);
+  }
+
+  fillTerrain(terrain: string) {
+    for (let y = 0; y < this.cell.length; y++) {
+      for (let x = 0; x < this.cell[y].length; x++) {
+        this.putTerrain(Terrain.of(terrain), new game.Point(x, y));
+      }
+    }
+  }
+
+  putCharacter(ch: Character, point: game.Point) {
+    this.addChild(ch);
+    this.characterPoint.set(ch, point);
+    this.at(point).character = ch;
+    ch.setPointByGrid(point);
+  }
+
+  moveCharacter(ch: Character, direction: game.Direction) {
+    const p = this.characterPoint.get(ch);
+    this.at(p).removeCharacter();
+    this.putCharacter(ch, p.plus(direction));
+  }
+
+  private at(point: game.Point): Cell {
+    return this.cell[point.y][point.x];
+  }
+}
+
+class TestScene extends game.Scene {
+  keyState = new Set<string>();
+  hero: Character;
+  allow: game.Sprite;
+  stage: Stage;
+  setup() {
+    this.hero = new Character('hero');
+    this.hero.tint = 0x33CCCC;
+    this.hero.position.set(64, 64);
+    this.allow = new game.Sprite('allow', 0.05);
+    this.allow.visible = false;
+    Terrain.regist('floor', 0x404040, true);
+    Terrain.regist('wall', 0xc0c0c0);
+    Terrain.regist('wall_bottom', 0xc0c0c0);
+    this.stage = new Stage(80, 20);
+    this.stage.fillTerrain('floor');
+    this.stage.putCharacter(this.hero, new game.Point(1, 1));
+    this.addChild(this.stage);
+    this.addChild(this.allow)
   }
 
   pointermove(ps: game.PointerState) {
@@ -81,8 +154,7 @@ class TestScene extends game.Scene {
 
   swipe(direction: game.Direction) {
     this.allow.visible = false;
-    this.hero.x += direction.x * this.hero.width;
-    this.hero.y += direction.y * this.hero.height;
+    this.stage.moveCharacter(this.hero, direction);
     game.Audio.play('footstep');
   }
 }
@@ -93,11 +165,13 @@ new game.Game({
   backgroundColor: 'black'})
   .setSpriteScale(2)
   .registImage('resources', [
+    ['floor', 'floor.png', 16],
+    ['wall', 'wall.png', 16],
+    ['wall_bottom', 'wall_bottom.png', 16],
     ['hero', 'hero.png', 16],
     ['allow', 'allow_symbol.png', 16]
   ]).registSound('resources', [
     ['footstep', 'footstep.wav'],
-    ['bgm', '14_Aquarius (Block-6).mp3']
   ]).registScene([
     ['testScene', new TestScene()],
     ['titleScene', new TitleScene()]

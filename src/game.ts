@@ -29,6 +29,13 @@ export const
   DownLeft = Down.plus(Left),
   UpLeft = Up.plus(Left);
 
+export class Size {
+  constructor(public width: number, public height: number) {}
+  get tuple(): [number, number] {
+    return [this.width, this.height]
+  }
+}
+
 class Ticker {
   private ticker = new PIXI.Ticker();
 
@@ -160,7 +167,10 @@ export class Text extends PIXI.Text {
   }
 }
 
-export {Graphics as Graphics} from 'pixi.js';
+export {
+  Graphics as Graphics,
+  Container as Container
+} from 'pixi.js';
 
 class SpriteSheet {
   constructor(public texture?: PIXI.Texture, public width?: number){}
