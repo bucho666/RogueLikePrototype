@@ -245,7 +245,6 @@ export class Audio {
       eventName = 'pointerdown';
     Audio.context = new AudioContext();
     const releasePlaybackRestrictions = () => {
-      console.log('release playback restrictions');
       document.removeEventListener(eventName, releasePlaybackRestrictions);
       Audio.context.resume();
       const silent = Audio.context.createBufferSource();

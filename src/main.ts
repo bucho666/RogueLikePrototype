@@ -18,7 +18,7 @@ class TitleScene extends game.Scene {
   }
 }
 
-class GameObject extends game.Sprite {
+abstract class GameObject extends game.Sprite {
   constructor(readonly id: string, animatedSpeed: number=0.03) {
     super(id, animatedSpeed);
   }
@@ -27,15 +27,17 @@ class GameObject extends game.Sprite {
     this.x = point.x * this.width;
     this.y = point.y * this.height;
   }
+
+  set textureIndex(i: number) {
+    this.texture = this.textures[i];
+  }
 }
 
-class Terrain extends GameObject {
+abstract class Terrain extends GameObject {
   static terrain = new Map<string, Terrain>();
-  static regist(id: string, tint: number, passable: boolean=false) {
-    Terrain.terrain.set(id, new Terrain(id, tint, passable));
-  }
-
-  private constructor(id: string, tint: number, readonly passable: boolean) {
+  protected _isDoor: boolean = false;
+  protected _isWall: boolean = false;
+  protected constructor(id: string, tint: number, protected passable: boolean) {
     super(id);
     this.tint = tint;
   }
@@ -44,8 +46,99 @@ class Terrain extends GameObject {
     return Terrain.terrain.get(id).clone();
   }
 
+  get isPassable(): boolean {
+    return this.passable;
+  }
+
+  get isWall(): boolean {
+    return this._isWall;
+  }
+
+  get isDoor(): boolean {
+    return this._isDoor;
+  }
+
+  abstract clone(): Terrain;
+
+  open() {}
+  close() {}
+}
+
+class Wall extends Terrain {
+  static regist(id: string, tint: number) {
+    Terrain.terrain.set(id, new Wall(id, tint));
+  }
+
+  constructor(id: string, tint: number) {
+    super(id, tint, false);
+    this._isWall = true;
+    this.stop();
+  }
+
   clone(): Terrain {
-    return new Terrain(this.id, this.tint, this.passable);
+    return new Wall(this.id, this.tint);
+  }
+
+  open() {
+    this.textureIndex = 1;
+  }
+
+  close() {
+    this.textureIndex = 0;
+  }
+}
+
+class Floor extends Terrain {
+  static regist(id: string, tint: number) {
+    Terrain.terrain.set(id, new Floor(id, tint));
+  }
+
+  constructor(id: string, tint: number) {
+    super(id, tint, true);
+  }
+
+  clone(): Terrain {
+    return new Floor(this.id, this.tint);
+  }
+}
+
+class Door extends Terrain {
+  static regist(id: string, tint: number) {
+    Terrain.terrain.set(id, new Door(id, tint));
+  }
+
+  protected constructor(id: string, tint: number) {
+    super(id, tint, false);
+    this._isDoor = true;
+    this.stop();
+  }
+
+  clone(): Terrain {
+    return new Door(this.id, this.tint);
+  }
+
+  open() {
+    this.textureIndex = 1;
+    this.passable = true;
+  }
+
+  close() {
+    this.textureIndex = 0;
+    this.passable = false;
+  }
+}
+
+class Water extends Terrain {
+  static regist(id: string, tint: number) {
+    Terrain.terrain.set(id, new Water(id, tint));
+  }
+
+  constructor(id: string, tint: number) {
+    super(id, tint, false);
+  }
+
+  clone(): Terrain {
+    return new Water(this.id, this.tint);
   }
 }
 
@@ -58,9 +151,9 @@ class Cell {
     this.character = undefined;
   }
 
-  get terrain(): Terrain {
-    return this._terrain;
-  }
+  //get terrain(): Terrain {
+  //  return this._terrain;
+  //}
 
   set terrain(newTerrain: Terrain) {
     if (this._terrain != undefined) {
@@ -68,10 +161,33 @@ class Cell {
     }
     this._terrain = newTerrain;
   }
+
+  get isPassable(): boolean {
+    return this._terrain.isPassable;
+  }
+
+  get isWall(): boolean {
+    return this._terrain.isWall;
+  }
+
+  get isDoor(): boolean {
+    return this._terrain.isDoor;
+  }
+
+  openTerrain() {
+    this._terrain.open();
+  }
+
+  closeTerrain() {
+    this._terrain.close();
+  }
 }
 
 class MoveResult {
-  constructor(readonly isMoved: boolean){};
+  constructor(
+    readonly isMoved: boolean,
+    public to: Cell = undefined
+  ){};
 }
 
 class Stage extends game.Container {
@@ -93,13 +209,14 @@ class Stage extends game.Container {
     t.setPointByGrid(point);
   }
 
-  setWallFalce(wall: string, face: string): Stage {
+  setWallFace(): Stage {
     for (let y = 0; y < this.cell.length-1; y++) {
       for (let x = 1; x < this.cell[y].length-1; x++) {
-        const p = new game.Point(x, y);
-        if (this.at(p).terrain.id == wall &&
-            this.isPassable(p.plus(game.Down))) {
-          this.putTerrain(face, p);
+        const p = new game.Point(x, y),
+          cell = this.at(p),
+          bottomCell = this.at(p.plus(game.Down));
+        if (cell.isWall && !bottomCell.isWall) {
+          cell.openTerrain();
         }
       }
     }
@@ -124,17 +241,14 @@ class Stage extends game.Container {
   moveCharacter(ch: Character, direction: game.Direction): MoveResult {
     const
       p = this.characterPoint.get(ch),
-      to = p.plus(direction);
-    if (this.isPassable(to) == false) {
-      return new MoveResult(false);
+      to = p.plus(direction),
+      toCell = this.at(to);
+    if (toCell.isPassable == false) {
+      return new MoveResult(false, toCell);
     }
     this.at(p).removeCharacter();
-    this.putCharacter(ch, p.plus(direction));
+    this.putCharacter(ch, to);
     return new MoveResult(true);
-  }
-
-  isPassable(point: game.Point): boolean {
-    return this.at(point).terrain.passable;
   }
 
   private at(point: game.Point): Cell {
@@ -154,7 +268,7 @@ class MapDesign {
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         stage.putTerrain(
-          this.terrain.get(this.map[y][x]), 
+          this.terrain.get(this.map[y][x]),
           new game.Point(x, y)
         );
       }
@@ -170,43 +284,45 @@ class TestScene extends game.Scene {
   stage: Stage;
   setup() {
     this.hero = new Character('hero');
-    this.hero.tint = 0x33CCCC;
+    this.hero.tint = 0xc0c0c0;
     this.hero.position.set(64, 64);
     this.allow = new game.Sprite('allow', 0.05);
     this.allow.visible = false;
-    Terrain.regist('floor', 0x404040, true);
-    Terrain.regist('wall', 0xb3513a);
-    Terrain.regist('wall_face', 0xb3513a);
+    Floor.regist('floor', 0x404040);
+    Wall.regist('wall', 0xb3513a);
+    Water.regist('water', 0x3d5aca);
+    Door.regist('door', 0xa8842f);
     this.stage = new MapDesign(new Map([
       ['#', 'wall'],
       ['.', 'floor'],
+      ['~', 'water'],
+      ['+', 'door'],
     ]), [
       '########################################################################',
-      '#.............#..............#####.......##...................##.......#',
-      '#.#.........#.#..............#####.......##...................##.......#',
-      '#.............#.#####.#####..............##...................##.......#',
+      '#.............#..............#####.......##..~~~~~~~~~~~~~~~..##.......#',
+      '#.#.........#.#..............#####.......##...~~~~~~~~~~~~~...##.......#',
+      '#.............#.#####+#####......+.......##....~~~~~~~~~~~....##.......#',
       '#.#.#.#.#.#.#.#.#####.#####..#####.......##...................##.......#',
-      '#.............#.####...####..#####.......###.######################.####',
-      '######..#######.###.....###..###############.......################.####',
+      '#.............#.####...####..#####.......###+######################+####',
+      '######++#######.###.....###..###############.......################.####',
       '######..###.....###.....###..#####################.################.####',
-      '#####...###.###############..#############.................########.####',
-      '####...####.##...#####.............#######.................########.####',
-      '###...###...#.......................................................####',
-      '###...###.####...#####.............#######.................#############',
-      '###...###.#################..#############.................#############',
-      '###...###.#################..#####.......#########.##########....#######',
-      '###...###.#..................#####.......#########.#########......######',
-      '###...###.#.#######.#######..#####.......#########................######',
-      '###...###.#.##...........##..............###################......######',
-      '###...###.#.#######.#######..#####.......####################....#######',
+      '#####...###.###############++#############.................########.####',
+      '####...####.##...#####.............#######.....~~~~~~......########.####',
+      '###...###...#..~.....+.............+..........~~~~~~~~..............####',
+      '###...###.####...#####.............#######.....~~~~~~......#############',
+      '###...###.#################++#############.................#############',
+      '###...###.#################..#####.......#########+##########....#######',
+      '###...###.#..................#####......~#########.#########......######',
+      '###...###.#.#######+#######..#####.....~~#########.........+......######',
+      '###...###.#.##...........##......+...~~~~###################......######',
+      '###...###.#.#######+#######..#####.~~~~~~####################....#######',
       '###.......#..................###########################################',
       '########################################################################'
-    ]).create().setWallFalce('wall', 'wall_face');
+    ]).create().setWallFace();
     this.stage.putCharacter(this.hero, new game.Point(67, 2));
     this.adjustCamera();
     this.addChild(this.stage);
     this.stage.addChild(this.allow)
-    // TODO Doorと湖の実装
     // TODO Swipmoveで移動を実装
   }
 
@@ -234,10 +350,13 @@ class TestScene extends game.Scene {
     this.allow.visible = false;
     const result = this.stage.moveCharacter(this.hero, direction);
     if (result.isMoved == false) {
+      if (result.to.isDoor) {
+        result.to.openTerrain();
+        game.Audio.play('footstep');
+      }
       return;
     }
     this.adjustCamera();
-   game.Audio.play('footstep');
   }
 
   private adjustCamera() {
@@ -255,7 +374,8 @@ new game.Game({
   .registImage('resources', [
     ['floor', 'floor.png', 16],
     ['wall', 'wall.png', 16],
-    ['wall_face', 'wall_face.png', 16],
+    ['door', 'door.png', 16],
+    ['water', 'water.png', 16],
     ['hero', 'hero.png', 16],
     ['allow', 'allow_symbol.png', 16]
   ]).registSound('resources', [
