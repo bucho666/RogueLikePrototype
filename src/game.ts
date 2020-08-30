@@ -219,6 +219,10 @@ export class Sprite extends PIXI.AnimatedSprite {
   set point(p: Point) {
     [this.x, this.y] = p.tuple;
   }
+
+  remove() {
+    this.parent.removeChild(this);
+  }
 }
 
 export class Audio {
