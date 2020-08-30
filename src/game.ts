@@ -240,8 +240,19 @@ export class Audio {
   }
 
   static initialize(window: any) {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const
+      AudioContext = window.AudioContext || window.webkitAudioContext,
+      eventName = 'pointerdown';
     Audio.context = new AudioContext();
+    const releasePlaybackRestrictions = () => {
+      console.log('release playback restrictions');
+      document.removeEventListener(eventName, releasePlaybackRestrictions);
+      Audio.context.resume();
+      const silent = Audio.context.createBufferSource();
+      silent.start();
+      silent.stop();
+    }
+    document.addEventListener(eventName, releasePlaybackRestrictions);
   }
 
   constructor(private buffer: AudioBuffer,

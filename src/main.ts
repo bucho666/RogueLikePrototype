@@ -206,6 +206,8 @@ class TestScene extends game.Scene {
     this.adjustCamera();
     this.addChild(this.stage);
     this.stage.addChild(this.allow)
+    // TODO Doorと湖の実装
+    // TODO Swipmoveで移動を実装
   }
 
   pointermove(ps: game.PointerState) {
