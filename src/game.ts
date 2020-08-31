@@ -1,6 +1,16 @@
 import * as PIXI from 'pixi.js';
 
 export class Point {
+  static readonly Here = new Point();
+  static readonly Up = new Point(0, -1);
+  static readonly Right = new Point(1, 0);
+  static readonly Down = new Point(0, 1);
+  static readonly Left = new Point(-1, 0);
+  static readonly UpRight = Point.Up.plus(Point.Right);
+  static readonly DownRight = Point.Down.plus(Point.Right);
+  static readonly DownLeft = Point.Down.plus(Point.Left);
+  static readonly UpLeft = Point.Up.plus(Point.Left);
+
   constructor(readonly x: number=0, readonly y: number=0){}
 
   distance(other: Point): Point {
@@ -17,17 +27,6 @@ export class Point {
 }
 
 export type Direction = Point;
-
-export const
-  Here = new Point(),
-  Up = new Point(0, -1),
-  Right = new Point(1, 0),
-  Down = new Point(0, 1),
-  Left = new Point(-1, 0),
-  UpRight = Up.plus(Right),
-  DownRight = Down.plus(Right),
-  DownLeft = Down.plus(Left),
-  UpLeft = Up.plus(Left);
 
 export class Size {
   constructor(public width: number, public height: number) {}
@@ -398,15 +397,15 @@ export class PointerState {
       [dx, dy] = this.distance.tuple,
       up = dy < -play, down = dy > play,
       right = dx > play, left = dx < -play;
-    if (up && right) return UpRight;
-    if (down && right) return DownRight;
-    if (down && left) return DownLeft;
-    if (up && left) return UpLeft;
-    if (up) return Up;
-    if (right) return Right;
-    if (down) return Down;
-    if (left) return Left;
-    return Here;
+    if (up && right) return Point.UpRight;
+    if (down && right) return Point.DownRight;
+    if (down && left) return Point.DownLeft;
+    if (up && left) return Point.UpLeft;
+    if (up) return Point.Up;
+    if (right) return Point.Right;
+    if (down) return Point.Down;
+    if (left) return Point.Left;
+    return Point.Here;
   }
 }
 
@@ -472,7 +471,7 @@ class Pointer {
         new Point(e.offsetX * this._screenRatio, e.offsetY * this._screenRatio),
         this._lastDownPoint
       );
-    if (ps.swipeDirection == Here) {
+    if (ps.swipeDirection == Point.Here) {
       this.upEvent(ps);
     } else {
       this.swipeEvent(ps.swipeDirection);
