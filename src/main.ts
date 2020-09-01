@@ -1,16 +1,29 @@
 import {
   Audio,
   Container,
+  Coord,
   Direction,
   Game,
   Point,
   PointerState,
   Scene,
-  SingleTask,
+  Task,
   Sprite,
-  Tasks,
   Text,
-} from'./game' ;
+} from './game';
+
+
+class FlashSprite extends Task {
+  constructor(private sprite: Sprite | Text, private interval: number) {
+    super();
+  }
+
+  process(): Task {
+    if (this.elapsed < this.interval) return;
+    this.elapsed -= this.interval;
+    this.sprite.visible = !this.sprite.visible;
+  }
+}
 
 class TitleScene extends Scene {
   setup() {
@@ -18,11 +31,7 @@ class TitleScene extends Scene {
     message.point = Scene.screen.center;
     message.anchor.set(0.5);
     this.addChild(message);
-    this.task.add(
-      new Tasks(new SingleTask(()=> {
-        message.visible = !message.visible;
-      }).every(0.6))
-    )
+    this.addTask(new FlashSprite(message, 600));
   }
 
   pointerup() {
@@ -200,7 +209,7 @@ class MoveResult {
 
 class Stage extends Container {
   private cell: Cell[][];
-  private characterPoint = new Map<Character, Point>();
+  private characterCoord = new Map<Character, Coord>();
   constructor(width: number, height: number) {
     super();
     this.cell = Array.from(
@@ -220,9 +229,9 @@ class Stage extends Container {
   setWallFace(): Stage {
     for (let y = 0; y < this.cell.length-1; y++) {
       for (let x = 1; x < this.cell[y].length-1; x++) {
-        const p = new Point(x, y),
+        const p = new Coord(x, y),
           cell = this.at(p),
-          bottomCell = this.at(p.plus(Point.Down));
+          bottomCell = this.at(p.plus(Direction.Down));
         if (cell.isWall && !bottomCell.isWall) {
           cell.openTerrain();
         }
@@ -234,21 +243,21 @@ class Stage extends Container {
   fillTerrain(terrain: string) {
     for (let y = 0; y < this.cell.length; y++) {
       for (let x = 0; x < this.cell[y].length; x++) {
-        this.putTerrain(terrain, new Point(x, y));
+        this.putTerrain(terrain, new Direction(x, y));
       }
     }
   }
 
-  putCharacter(ch: Character, point: Point) {
+  putCharacter(ch: Character, coord: Coord) {
     this.addChild(ch);
-    this.characterPoint.set(ch, point);
-    this.at(point).character = ch;
-    ch.setPointByGrid(point);
+    this.characterCoord.set(ch, coord);
+    this.at(coord).character = ch;
+    ch.setPointByGrid(coord);
   }
 
   moveCharacter(ch: Character, direction: Direction): MoveResult {
     const
-      p = this.characterPoint.get(ch),
+      p = this.characterCoord.get(ch),
       to = p.plus(direction),
       toCell = this.at(to);
     if (toCell.isPassable == false) {
@@ -277,7 +286,7 @@ class MapDesign {
       for (let x = 0; x < w; x++) {
         stage.putTerrain(
           this.terrain.get(this.map[y][x]),
-          new Point(x, y)
+          new Coord(x, y)
         );
       }
     }
@@ -327,7 +336,7 @@ class TestScene extends Scene {
       '###.......#..................###########################################',
       '########################################################################'
     ]).create().setWallFace();
-    this.stage.putCharacter(this.hero, new Point(67, 2));
+    this.stage.putCharacter(this.hero, new Coord(67, 2));
     this.adjustCamera();
     this.addChild(this.stage);
     this.stage.addChild(this.allow)
@@ -336,17 +345,17 @@ class TestScene extends Scene {
 
   pointermove(ps: PointerState) {
     this.allow.position = this.hero.position;
-    if (ps.swipeDirection == Point.Here) {
+    if (ps.swipeDirection == Direction.Here) {
       this.allow.visible = false;
       return;
     }
     const
       [w, h] = [this.hero.width, this.hero.height],
       [a, x, y]= new Map<Direction, [number, number, number]>([
-        [Point.Right, [0, w, 0]], [Point.DownRight, [45, w, h]],
-        [Point.Down, [90, 0, h]], [Point.DownLeft, [135, -w, h]],
-        [Point.Left, [180, -w, 0]], [Point.UpLeft, [225, -w, -h]],
-        [Point.Up, [270, 0, -h]], [Point.UpRight, [315, w, -h]]
+        [Direction.Right, [0, w, 0]], [Direction.DownRight, [45, w, h]],
+        [Direction.Down, [90, 0, h]], [Direction.DownLeft, [135, -w, h]],
+        [Direction.Left, [180, -w, 0]], [Direction.UpLeft, [225, -w, -h]],
+        [Direction.Up, [270, 0, -h]], [Direction.UpRight, [315, w, -h]]
       ]).get(ps.swipeDirection);
     this.allow.angle = a;
     this.allow.x += x;

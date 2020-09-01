@@ -1,24 +1,18 @@
 import * as PIXI from 'pixi.js';
 
-export class Point {
-  static readonly Here = new Point();
-  static readonly Up = new Point(0, -1);
-  static readonly Right = new Point(1, 0);
-  static readonly Down = new Point(0, 1);
-  static readonly Left = new Point(-1, 0);
-  static readonly UpRight = Point.Up.plus(Point.Right);
-  static readonly DownRight = Point.Down.plus(Point.Right);
-  static readonly DownLeft = Point.Down.plus(Point.Left);
-  static readonly UpLeft = Point.Up.plus(Point.Left);
+export interface Point {
+  x: number; y: number;
+}
 
-  constructor(readonly x: number=0, readonly y: number=0){}
+export class Coord implements Point {
+  constructor(public x: number=0, public y: number=0){}
 
-  distance(other: Point): Point {
-    return new Point(this.x - other.x, this.y - other.y)
+  distance(other: Point): Coord {
+    return new Coord(this.x - other.x, this.y - other.y)
   }
 
-  plus(other: Point): Point {
-    return new Point(this.x + other.x, this.y + other.y)
+  plus(other: Point): Coord {
+    return new Coord(this.x + other.x, this.y + other.y)
   }
 
   get tuple(): [number, number] {
@@ -26,7 +20,18 @@ export class Point {
   }
 }
 
-export type Direction = Point;
+export class Direction implements Point {
+  static readonly Here = new Direction();
+  static readonly Up = new Direction(0, -1);
+  static readonly Right = new Direction(1, 0);
+  static readonly Down = new Direction(0, 1);
+  static readonly Left = new Direction(-1, 0);
+  static readonly UpRight = new Direction(1, -1);
+  static readonly DownRight = new Direction(1, 1);
+  static readonly DownLeft = new Direction(-1, 1);
+  static readonly UpLeft = new Direction(-1, -1);
+  constructor(public x: number=0, public y: number=0){}
+}
 
 export class Size {
   constructor(public width: number, public height: number) {}
@@ -58,89 +63,50 @@ class Ticker {
 }
 
 export abstract class Task {
-  abstract update(elapsedMS: number): void;
-  abstract get isDone(): boolean;
-}
+  protected elapsed: number = 0;
+  private isRunning: boolean = true;
+  protected abstract process(): Task;
+  protected next: Task;
+  protected tasks: Task[] = [];
+  onFinish: (() => void)[] = [];
 
-export class SingleTask extends Task {
-  constructor(private callback: ()=>void,
-              private _times: number = -1,
-              private interval: number = 0,
-              private elapse: number = 0) {
-    super();
+  protected done() {
+    this.isRunning = false;
+    this.onFinish.forEach(e => e());
   }
 
-  times(value: number): SingleTask {
-    this._times = value;
+  addOnFinish(e: () => void):Task {
+    this.onFinish.push(e);
     return this;
   }
 
-  every(sec: number): SingleTask {
-    this.interval = sec * 1000;
-    return this;
-  }
-
-  update(elapsedMS: number) {
-    this.elapse += elapsedMS;
-    if (this.elapse < this.interval) {
-      return;
-    }
-    this.callback();
-    if (this._times > 0) {
-      this._times--;
-    }
-    this.elapse -= this.interval;
-  }
-
-  get isDone(): boolean {
-    return this._times == 0;
-  }
-}
-
-export class Tasks extends Task {
-  constructor(task: Task, private tasks: Task[] = []){
-    super();
-    this.add(task);
-  };
-
-  add(task: Task): Tasks {
+  add(task: Task): Task {
     this.tasks.push(task);
     return this;
   }
 
-  update(elapsedMS: number) {
-    this.tasks[0].update(elapsedMS);
-    if (this.tasks[0].isDone) {
-      this.tasks.shift();
+  addNext(task: Task): Task {
+    if (this.next) {
+      this.next.addNext(task);
+    } else {
+      this.next = task;
     }
-  }
-
-  get isDone(): boolean {
-    return this.tasks.length == 0;
-  }
-}
-
-export class MultiTask extends Task {
-  constructor(private tasks: Set<Task> = new Set<Task>()){
-    super();
-  };
-
-  add(task: Task): MultiTask {
-    this.tasks.add(task);
     return this;
   }
 
-  update(elapsedMS: number) {
-    for (const task of this.tasks) {
-      task.update(elapsedMS);
-      if (task.isDone) {
-        this.tasks.delete(task);
-      }
+  update(elapsedMS: number): Task {
+    this.elapsed += elapsedMS;
+    if (this.isRunning) {
+      this.process();
     }
-  }
-
-  get isDone(): boolean {
-    return this.tasks.size == 0;
+    this.tasks = this.tasks.map(t => t.update(elapsedMS)).filter(t => t);
+    if (this.isRunning || this.tasks.length > 1) {
+      return this;
+    }
+    if (this.next) {
+      return this.next;
+    }
+    return undefined;
   }
 }
 
@@ -162,7 +128,7 @@ export class Text extends PIXI.Text {
   }
 
   set point(p: Point) {
-    [this.x, this.y] = p.tuple;
+    [this.x, this.y] = [p.x, p.y];
   }
 }
 
@@ -216,7 +182,7 @@ export class Sprite extends PIXI.AnimatedSprite {
   }
 
   set point(p: Point) {
-    [this.x, this.y] = p.tuple;
+    [this.x, this.y] = [p.x, p.y];
   }
 
   remove() {
@@ -377,15 +343,15 @@ class Screen {
     return this.renderer.height;
   }
 
-  get center(): Point {
-    return new Point(this.width / 2, this.height / 2);
+  get center(): Coord {
+    return new Coord(this.width / 2, this.height / 2);
   }
 }
 
 export class PointerState {
-  readonly distance: Point;
+  readonly distance: Coord;
   readonly swipeDirection: Direction;
-  constructor(play: number, readonly point: Point, readonly start: Point){
+  constructor(play: number, readonly point: Coord, readonly start: Coord){
     if (start != undefined) {
       this.distance = this.point.distance(this.start);
       this.swipeDirection = this.getSwipeDirection(play);
@@ -397,21 +363,21 @@ export class PointerState {
       [dx, dy] = this.distance.tuple,
       up = dy < -play, down = dy > play,
       right = dx > play, left = dx < -play;
-    if (up && right) return Point.UpRight;
-    if (down && right) return Point.DownRight;
-    if (down && left) return Point.DownLeft;
-    if (up && left) return Point.UpLeft;
-    if (up) return Point.Up;
-    if (right) return Point.Right;
-    if (down) return Point.Down;
-    if (left) return Point.Left;
-    return Point.Here;
+    if (up && right) return Direction.UpRight;
+    if (down && right) return Direction.DownRight;
+    if (down && left) return Direction.DownLeft;
+    if (up && left) return Direction.UpLeft;
+    if (up) return Direction.Up;
+    if (right) return Direction.Right;
+    if (down) return Direction.Down;
+    if (left) return Direction.Left;
+    return Direction.Here;
   }
 }
 
 class Pointer {
   private _screenRatio: number;
-  private _lastDownPoint: Point;
+  private _lastDownPoint: Coord;
   downEvent: (p: PointerState) => void;
   moveEvent: (p: PointerState) => void;
   upEvent: (p: PointerState) => void;
@@ -422,7 +388,7 @@ class Pointer {
     this.moveEvent = () => {};
     this.upEvent = () => {};
     this.swipeEvent = () => {};
-    this._lastDownPoint = new Point();
+    this._lastDownPoint = new Coord();
     screen.addEventListener('pointerdown', (e: PointerEvent) => {
       this.down(e);
     });
@@ -441,12 +407,12 @@ class Pointer {
     this._swipePlay = play;
   }
 
-  get lastDownPoint(): Point {
+  get lastDownPoint(): Coord {
     return this._lastDownPoint;
   }
 
   down(e: PointerEvent) {
-    this._lastDownPoint = new Point(e.offsetX * this._screenRatio, e.offsetY * this._screenRatio);
+    this._lastDownPoint = new Coord(e.offsetX * this._screenRatio, e.offsetY * this._screenRatio);
     this.downEvent(
       new PointerState(
         this._swipePlay,
@@ -459,7 +425,7 @@ class Pointer {
     this.moveEvent(
       new PointerState(
         this._swipePlay,
-        new Point(e.offsetX * this._screenRatio, e.offsetY * this._screenRatio),
+        new Coord(e.offsetX * this._screenRatio, e.offsetY * this._screenRatio),
         this._lastDownPoint
       ));
   }
@@ -468,10 +434,10 @@ class Pointer {
     const
       ps = new PointerState(
         this._swipePlay,
-        new Point(e.offsetX * this._screenRatio, e.offsetY * this._screenRatio),
+        new Coord(e.offsetX * this._screenRatio, e.offsetY * this._screenRatio),
         this._lastDownPoint
       );
-    if (ps.swipeDirection == Point.Here) {
+    if (ps.swipeDirection == Direction.Here) {
       this.upEvent(ps);
     } else {
       this.swipeEvent(ps.swipeDirection);
@@ -486,6 +452,7 @@ export abstract class Scene extends PIXI.Container {
   private static ticker = new Ticker();
   private static map = new Map<string, Scene>();
   private static pointer: Pointer;
+  protected task: Task;
 
   static regist(scenes: [string, Scene][]) {
     for (const [id, scene] of scenes) {
@@ -543,14 +510,30 @@ export abstract class Scene extends PIXI.Container {
     return Scene.map.get(id);
   }
 
-  constructor(protected task: MultiTask = new MultiTask()) {
-    super();
-  }
-
   abstract setup(): void;
 
+  addTask(task: Task): Scene {
+    if (this.task) {
+      this.task.add(task);
+    } else {
+      this.task = task;
+    }
+    return this;
+  }
+
+  addNextTask(task: Task): Scene {
+    if (this.task) {
+      this.task.addNext(task);
+    } else {
+      this.task = task;
+    }
+    return this;
+  }
+
   taskUpdate(elapsedMS: number) {
-    this.task.update(elapsedMS);
+    if (this.task) {
+      this.task = this.task.update(elapsedMS);
+    }
   }
 
   update(_elapsedMS: number){};
