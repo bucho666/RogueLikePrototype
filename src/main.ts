@@ -12,7 +12,6 @@ import {
   Text,
 } from './game';
 
-
 class FlashSprite extends Task {
   constructor(private sprite: Sprite | Text, private interval: number) {
     super();
@@ -203,7 +202,8 @@ class Cell {
 class MoveResult {
   constructor(
     readonly isMoved: boolean,
-    public to: Cell = undefined
+    public coord: Coord,
+    public cell: Cell,
   ){};
 }
 
@@ -252,7 +252,6 @@ class Stage extends Container {
     this.addChild(ch);
     this.characterCoord.set(ch, coord);
     this.at(coord).character = ch;
-    ch.setPointByGrid(coord);
   }
 
   moveCharacter(ch: Character, direction: Direction): MoveResult {
@@ -261,15 +260,41 @@ class Stage extends Container {
       to = p.plus(direction),
       toCell = this.at(to);
     if (toCell.isPassable == false) {
-      return new MoveResult(false, toCell);
+      return new MoveResult(false, to, toCell);
     }
     this.at(p).removeCharacter();
     this.putCharacter(ch, to);
-    return new MoveResult(true);
+    return new MoveResult(true, to, toCell);
   }
 
   private at(point: Point): Cell {
     return this.cell[point.y][point.x];
+  }
+}
+
+class EasingMove extends Task {
+  private distance: Coord;
+  private start: Coord;
+  constructor(private target: Point, to: Coord, private timeLimit: number) {
+    super();
+    this.start = new Coord(target.x, target.y);
+    this.distance = to.distance(this.start);
+  }
+
+  process() {
+    const
+      progress = Math.min(1, this.elapsed / this.timeLimit) - 1,
+      [sx, sy] = this.start.tuple,
+      [dx, dy] = this.distance.tuple;
+    this.target.x = this.easing_out(sx, dx, progress);
+    this.target.y = this.easing_out(sy, dy, progress);
+    if (progress == 1) {
+      this.done();
+    }
+  }
+
+  easing_out(start: number, distance: number, p: number):number {
+    return distance * (Math.pow(p, 3) + 1) + start;
   }
 }
 
@@ -336,11 +361,12 @@ class TestScene extends Scene {
       '###.......#..................###########################################',
       '########################################################################'
     ]).create().setWallFace();
-    this.stage.putCharacter(this.hero, new Coord(67, 2));
-    this.adjustCamera();
+    const startPoint = new Coord(67, 2);
+    this.stage.putCharacter(this.hero, startPoint);
+    this.hero.setPointByGrid(startPoint);
+    this.update();
     this.addChild(this.stage);
     this.stage.addChild(this.allow)
-    // TODO Swipmoveで移動を実装
   }
 
   pointermove(ps: PointerState) {
@@ -367,16 +393,20 @@ class TestScene extends Scene {
     this.allow.visible = false;
     const result = this.stage.moveCharacter(this.hero, direction);
     if (result.isMoved == false) {
-      if (result.to.isDoor) {
-        result.to.openTerrain();
+      if (result.cell.isDoor) {
+        result.cell.openTerrain();
         Audio.play('footstep');
       }
       return;
     }
-    this.adjustCamera();
+    const to = new Coord(
+        this.hero.width * result.coord.x,
+        this.hero.height * result.coord.y
+    );
+    this.addTask(new EasingMove(this.hero, to, 400));
   }
 
-  private adjustCamera() {
+  update() {
     const center = Scene.screen.center;
     this.stage.x = -this.hero.x + center.x;
     this.stage.y = -this.hero.y + center.y;

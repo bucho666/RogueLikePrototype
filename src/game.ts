@@ -65,7 +65,7 @@ class Ticker {
 export abstract class Task {
   protected elapsed: number = 0;
   private isRunning: boolean = true;
-  protected abstract process(): Task;
+  protected abstract process(): void;
   protected next: Task;
   protected tasks: Task[] = [];
   onFinish: (() => void)[] = [];
