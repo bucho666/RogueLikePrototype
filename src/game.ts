@@ -68,15 +68,15 @@ export abstract class Task {
   protected abstract process(): void;
   protected next: Task;
   protected tasks: Task[] = [];
-  onFinish: (() => void)[] = [];
+  finishEvent: (() => void)[] = [];
 
   protected done() {
     this.isRunning = false;
-    this.onFinish.forEach(e => e());
+    this.finishEvent.forEach(e => e());
   }
 
-  addOnFinish(e: () => void):Task {
-    this.onFinish.push(e);
+  onFinish(e: () => void):Task {
+    this.finishEvent.push(e);
     return this;
   }
 
@@ -437,9 +437,8 @@ class Pointer {
         new Coord(e.offsetX * this._screenRatio, e.offsetY * this._screenRatio),
         this._lastDownPoint
       );
-    if (ps.swipeDirection == Direction.Here) {
-      this.upEvent(ps);
-    } else {
+    this.upEvent(ps);
+    if (ps.swipeDirection != Direction.Here) {
       this.swipeEvent(ps.swipeDirection);
     }
     this._lastDownPoint = undefined;

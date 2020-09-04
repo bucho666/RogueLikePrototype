@@ -162,7 +162,9 @@ class Water extends Terrain {
   }
 }
 
-class Character extends GameObject {}
+class Character extends GameObject {
+  public isMoving = false;
+}
 
 class Cell {
   public character: Character;
@@ -288,7 +290,7 @@ class EasingMove extends Task {
       [dx, dy] = this.distance.tuple;
     this.target.x = this.easing_out(sx, dx, progress);
     this.target.y = this.easing_out(sy, dy, progress);
-    if (progress == 1) {
+    if (this.elapsed >= this.timeLimit) {
       this.done();
     }
   }
@@ -319,17 +321,21 @@ class MapDesign {
   }
 }
 
+// TODO Controllerを作成
+// moveイベントで移動キーをセット
+// 移動イベントの最後でコントローラのリセット
+// upイベントでコントローラーリセット
+// updateイベントでコントローラの状態によって
+// キャラ移動
+
 class TestScene extends Scene {
-  keyState = new Set<string>();
+  directionKey = Direction.Here;
   hero: Character;
-  allow: Sprite;
   stage: Stage;
   setup() {
     this.hero = new Character('hero');
     this.hero.tint = 0xc0c0c0;
     this.hero.position.set(64, 64);
-    this.allow = new Sprite('allow', 0.05);
-    this.allow.visible = false;
     Floor.regist('floor', 0x404040);
     Wall.regist('wall', 0xb3513a);
     Water.regist('water', 0x3d5aca);
@@ -366,31 +372,32 @@ class TestScene extends Scene {
     this.hero.setPointByGrid(startPoint);
     this.update();
     this.addChild(this.stage);
-    this.stage.addChild(this.allow)
   }
 
   pointermove(ps: PointerState) {
-    this.allow.position = this.hero.position;
-    if (ps.swipeDirection == Direction.Here) {
-      this.allow.visible = false;
-      return;
+    if (ps.swipeDirection) {
+      this.directionKey = ps.swipeDirection;
     }
-    const
-      [w, h] = [this.hero.width, this.hero.height],
-      [a, x, y]= new Map<Direction, [number, number, number]>([
-        [Direction.Right, [0, w, 0]], [Direction.DownRight, [45, w, h]],
-        [Direction.Down, [90, 0, h]], [Direction.DownLeft, [135, -w, h]],
-        [Direction.Left, [180, -w, 0]], [Direction.UpLeft, [225, -w, -h]],
-        [Direction.Up, [270, 0, -h]], [Direction.UpRight, [315, w, -h]]
-      ]).get(ps.swipeDirection);
-    this.allow.angle = a;
-    this.allow.x += x;
-    this.allow.y += y;
-    this.allow.visible = true;
   }
 
-  swipe(direction: Direction) {
-    this.allow.visible = false;
+  pointerup() {
+    this.directionKey = Direction.Here;
+  }
+
+  update() {
+    this.adjustCamera();
+    if (this.hero.isMoving == false && this.directionKey != Direction.Here) {
+      this.moveHero(this.directionKey);
+    }
+  }
+
+  adjustCamera() {
+    const center = Scene.screen.center;
+    this.stage.x = -this.hero.x + center.x;
+    this.stage.y = -this.hero.y + center.y;
+  }
+
+  moveHero(direction: Direction) {
     const result = this.stage.moveCharacter(this.hero, direction);
     if (result.isMoved == false) {
       if (result.cell.isDoor) {
@@ -403,13 +410,10 @@ class TestScene extends Scene {
         this.hero.width * result.coord.x,
         this.hero.height * result.coord.y
     );
-    this.addTask(new EasingMove(this.hero, to, 400));
-  }
-
-  update() {
-    const center = Scene.screen.center;
-    this.stage.x = -this.hero.x + center.x;
-    this.stage.y = -this.hero.y + center.y;
+    this.hero.isMoving = true;
+    this.addTask(new EasingMove(this.hero, to, 300).onFinish(()=> {
+      this.hero.isMoving = false;
+    }));
   }
 }
 
@@ -424,7 +428,6 @@ new Game({
     ['door', 'door.png', 16],
     ['water', 'water.png', 16],
     ['hero', 'hero.png', 16],
-    ['allow', 'allow_symbol.png', 16]
   ]).registSound('resources', [
     ['footstep', 'footstep.wav'],
   ]).registScene([
