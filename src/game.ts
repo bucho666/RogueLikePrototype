@@ -1,44 +1,5 @@
 import * as PIXI from 'pixi.js';
-
-export interface Point {
-  x: number; y: number;
-}
-
-export class Coord implements Point {
-  constructor(public x: number=0, public y: number=0){}
-
-  distance(other: Point): Coord {
-    return new Coord(this.x - other.x, this.y - other.y)
-  }
-
-  plus(other: Point): Coord {
-    return new Coord(this.x + other.x, this.y + other.y)
-  }
-
-  get tuple(): [number, number] {
-    return [this.x, this.y];
-  }
-}
-
-export class Direction implements Point {
-  static readonly Here = new Direction();
-  static readonly Up = new Direction(0, -1);
-  static readonly Right = new Direction(1, 0);
-  static readonly Down = new Direction(0, 1);
-  static readonly Left = new Direction(-1, 0);
-  static readonly UpRight = new Direction(1, -1);
-  static readonly DownRight = new Direction(1, 1);
-  static readonly DownLeft = new Direction(-1, 1);
-  static readonly UpLeft = new Direction(-1, -1);
-  constructor(public x: number=0, public y: number=0){}
-}
-
-export class Size {
-  constructor(public width: number, public height: number) {}
-  get tuple(): [number, number] {
-    return [this.width, this.height]
-  }
-}
+import {Point, Coord, Direction} from './geometry';
 
 class Ticker {
   private ticker = new PIXI.Ticker();
@@ -349,29 +310,30 @@ class Screen {
 }
 
 export class PointerState {
-  readonly distance: Coord;
+  readonly distance: number;
+  readonly angle: number;
   readonly swipeDirection: Direction;
+
   constructor(play: number, readonly point: Coord, readonly start: Coord){
-    if (start != undefined) {
-      this.distance = this.point.distance(this.start);
+    if (start == undefined) return;
+    const
+      [dx, dy] = this.point.distance(this.start).tuple;
+      this.angle = (180 / Math.PI) * Math.atan2(dy, dx),
+      this.distance = Math.sqrt(Math.pow(dx, 2) + Math.pow(dy, 2));
       this.swipeDirection = this.getSwipeDirection(play);
-    }
   }
 
   private getSwipeDirection(play: number): Direction {
-    const
-      [dx, dy] = this.distance.tuple,
-      up = dy < -play, down = dy > play,
-      right = dx > play, left = dx < -play;
-    if (up && right) return Direction.UpRight;
-    if (down && right) return Direction.DownRight;
-    if (down && left) return Direction.DownLeft;
-    if (up && left) return Direction.UpLeft;
-    if (up) return Direction.Up;
-    if (right) return Direction.Right;
-    if (down) return Direction.Down;
-    if (left) return Direction.Left;
-    return Direction.Here;
+    const a = this.angle, q = 22.5;
+    if (this.distance < play) return Direction.Here;
+    if (q * -7 < a && a < q * -5) return Direction.UpLeft;
+    if (q * -5 < a && a < q * -3) return Direction.Up;
+    if (q * -3 < a && a < q * -1) return Direction.UpRight;
+    if (q * -1 < a && a < q * 1) return Direction.Right;
+    if (q *  1 < a && a < q * 3) return Direction.DownRight;
+    if (q *  3 < a && a < q * 5) return Direction.Down;
+    if (q *  5 < a && a < q * 7) return Direction.DownLeft;
+    return Direction.Left;
   }
 }
 
@@ -571,11 +533,6 @@ export class Game {
 
   setSpriteScale(scale: number): Game {
     Sprite.defaultScale = scale;
-    return this;
-  }
-
-  SpipePlay(play: number): Game {
-    Scene.swipePlay = play;
     return this;
   }
 

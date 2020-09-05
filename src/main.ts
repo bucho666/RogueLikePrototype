@@ -1,10 +1,8 @@
+import {Point, Coord, Direction} from './geometry';
 import {
   Audio,
   Container,
-  Coord,
-  Direction,
   Game,
-  Point,
   PointerState,
   Scene,
   Task,
@@ -321,18 +319,12 @@ class MapDesign {
   }
 }
 
-// TODO Controllerを作成
-// moveイベントで移動キーをセット
-// 移動イベントの最後でコントローラのリセット
-// upイベントでコントローラーリセット
-// updateイベントでコントローラの状態によって
-// キャラ移動
-
 class TestScene extends Scene {
-  directionKey = Direction.Here;
+  pointer: PointerState;
   hero: Character;
   stage: Stage;
   setup() {
+    Scene.swipePlay = 48;
     this.hero = new Character('hero');
     this.hero.tint = 0xc0c0c0;
     this.hero.position.set(64, 64);
@@ -375,19 +367,18 @@ class TestScene extends Scene {
   }
 
   pointermove(ps: PointerState) {
-    if (ps.swipeDirection) {
-      this.directionKey = ps.swipeDirection;
-    }
+    this.pointer = ps;
   }
 
   pointerup() {
-    this.directionKey = Direction.Here;
+    this.pointer = undefined;
   }
 
   update() {
     this.adjustCamera();
-    if (this.hero.isMoving == false && this.directionKey != Direction.Here) {
-      this.moveHero(this.directionKey);
+    if (this.hero.isMoving == false &&
+        this.pointer && this.pointer.swipeDirection != Direction.Here) {
+      this.moveHero();
     }
   }
 
@@ -397,8 +388,10 @@ class TestScene extends Scene {
     this.stage.y = -this.hero.y + center.y;
   }
 
-  moveHero(direction: Direction) {
-    const result = this.stage.moveCharacter(this.hero, direction);
+  moveHero() {
+    const
+      direction = this.pointer.swipeDirection,
+      result = this.stage.moveCharacter(this.hero, direction);
     if (result.isMoved == false) {
       if (result.cell.isDoor) {
         result.cell.openTerrain();
@@ -411,9 +404,12 @@ class TestScene extends Scene {
         this.hero.height * result.coord.y
     );
     this.hero.isMoving = true;
-    this.addTask(new EasingMove(this.hero, to, 300).onFinish(()=> {
-      this.hero.isMoving = false;
-    }));
+    this.addTask(new EasingMove(
+      this.hero, to,
+      Math.max(150, 600 - this.pointer.distance * 3))
+      .onFinish(()=> {
+        this.hero.isMoving = false;
+      }));
   }
 }
 
