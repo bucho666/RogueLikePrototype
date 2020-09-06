@@ -9,6 +9,7 @@ import {
   Sprite,
   Text,
 } from './game';
+import { Graphics } from 'pixi.js';
 
 class FlashSprite extends Task {
   constructor(private sprite: Sprite | Text, private interval: number) {
@@ -319,12 +320,36 @@ class MapDesign {
   }
 }
 
+class Compass extends Container {
+  circle: Graphics;
+  constructor(private allow: Sprite, radius: number, color: number = 0xffffff,
+              circleAlpha: number = 0.2, allowAlpha: number = 0.8) {
+    super();
+    this.circle = new Graphics()
+        .beginFill(color, circleAlpha)
+        .drawCircle(0, 0, radius)
+        .endFill();
+    this.allow.scale.set(radius / ((this.allow.height + 1) / 4));
+    this.allow.alpha = allowAlpha;
+    this.addChild(this.circle).addChild(this.allow);
+  }
+
+  set tint(tint: number) {
+    this.circle.tint = this.allow.tint = tint;
+  }
+
+  setDirection(dir: Direction): Compass {
+    this.allow.angle = dir.angle;
+    return this;
+  }
+}
+
 class TestScene extends Scene {
-  pointer: PointerState;
-  hero: Character;
-  stage: Stage;
+  private pointer: PointerState;
+  private hero: Character;
+  private stage: Stage;
+  private compass: Compass;
   setup() {
-    Scene.swipePlay = 48;
     this.hero = new Character('hero');
     this.hero.tint = 0xc0c0c0;
     this.hero.position.set(64, 64);
@@ -363,7 +388,11 @@ class TestScene extends Scene {
     this.stage.putCharacter(this.hero, startPoint);
     this.hero.setPointByGrid(startPoint);
     this.update();
-    this.addChild(this.stage);
+    this.compass = new Compass(new Sprite('compass'), 32, 0xffffff, 0.2);
+    this.compass.tint = this.hero.tint;
+    this.compass.visible = false;
+    this.addChild(this.stage)
+    this.addChild(this.compass);
   }
 
   pointermove(ps: PointerState) {
@@ -372,12 +401,18 @@ class TestScene extends Scene {
 
   pointerup() {
     this.pointer = undefined;
+    this.compass.visible = false;
   }
 
   update() {
     this.adjustCamera();
-    if (this.hero.isMoving == false &&
-        this.pointer && this.pointer.swipeDirection != Direction.Here) {
+    if (this.pointer == undefined) return;
+    const swipeDir = this.pointer.swipeDirection;
+    if (this.pointer.start) {
+      this.compass.position.set(...this.pointer.start.tuple);
+      this.compass.setDirection(swipeDir).visible = true;;
+    }
+    if (this.hero.isMoving == false && this.pointer.distance >= 32) {
       this.moveHero();
     }
   }
@@ -407,9 +442,7 @@ class TestScene extends Scene {
     this.addTask(new EasingMove(
       this.hero, to,
       Math.max(150, 600 - this.pointer.distance * 3))
-      .onFinish(()=> {
-        this.hero.isMoving = false;
-      }));
+      .onFinish(()=> { this.hero.isMoving = false; }));
   }
 }
 
@@ -424,6 +457,7 @@ new Game({
     ['door', 'door.png', 16],
     ['water', 'water.png', 16],
     ['hero', 'hero.png', 16],
+    ['compass', 'compass.png', 31],
   ]).registSound('resources', [
     ['footstep', 'footstep.wav'],
   ]).registScene([

@@ -314,18 +314,19 @@ export class PointerState {
   readonly angle: number;
   readonly swipeDirection: Direction;
 
-  constructor(play: number, readonly point: Coord, readonly start: Coord){
+  constructor(readonly point: Coord, readonly start: Coord){
     if (start == undefined) return;
     const
       [dx, dy] = this.point.distance(this.start).tuple;
       this.angle = (180 / Math.PI) * Math.atan2(dy, dx),
       this.distance = Math.sqrt(Math.pow(dx, 2) + Math.pow(dy, 2));
-      this.swipeDirection = this.getSwipeDirection(play);
+      this.swipeDirection = this.getSwipeDirection();
   }
 
-  private getSwipeDirection(play: number): Direction {
-    const a = this.angle, q = 22.5;
-    if (this.distance < play) return Direction.Here;
+  private getSwipeDirection(): Direction {
+    const
+      a = this.angle,
+      q = 22.5;
     if (q * -7 < a && a < q * -5) return Direction.UpLeft;
     if (q * -5 < a && a < q * -3) return Direction.Up;
     if (q * -3 < a && a < q * -1) return Direction.UpRight;
@@ -345,7 +346,7 @@ class Pointer {
   upEvent: (p: PointerState) => void;
   swipeEvent: (directon: Direction) => void;
 
-  constructor(screen: Screen, public _swipePlay: number = 64) {
+  constructor(screen: Screen) {
     this.downEvent = () => {};
     this.moveEvent = () => {};
     this.upEvent = () => {};
@@ -365,10 +366,6 @@ class Pointer {
     this._screenRatio = screen.scaleRatio;
   }
 
-  set swipePlay(play: number) {
-    this._swipePlay = play;
-  }
-
   get lastDownPoint(): Coord {
     return this._lastDownPoint;
   }
@@ -377,7 +374,6 @@ class Pointer {
     this._lastDownPoint = new Coord(e.offsetX * this._screenRatio, e.offsetY * this._screenRatio);
     this.downEvent(
       new PointerState(
-        this._swipePlay,
         this._lastDownPoint,
         this._lastDownPoint
       ));
@@ -386,7 +382,6 @@ class Pointer {
   move(e: PointerEvent) {
     this.moveEvent(
       new PointerState(
-        this._swipePlay,
         new Coord(e.offsetX * this._screenRatio, e.offsetY * this._screenRatio),
         this._lastDownPoint
       ));
@@ -395,10 +390,8 @@ class Pointer {
   up(e: PointerEvent) {
     const
       ps = new PointerState(
-        this._swipePlay,
         new Coord(e.offsetX * this._screenRatio, e.offsetY * this._screenRatio),
-        this._lastDownPoint
-      );
+        this._lastDownPoint);
     this.upEvent(ps);
     if (ps.swipeDirection != Direction.Here) {
       this.swipeEvent(ps.swipeDirection);
@@ -419,10 +412,6 @@ export abstract class Scene extends PIXI.Container {
     for (const [id, scene] of scenes) {
       Scene.map.set(id, scene);
     }
-  }
-
-  static set swipePlay(play: number) {
-    Scene.pointer.swipePlay = play;
   }
 
   static setupScreen(config: object) {
@@ -507,6 +496,8 @@ export abstract class Scene extends PIXI.Container {
 export class Game {
   private loader: Loader;
   constructor(private config: Object) {
+    PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST;
+    PIXI.settings.ROUND_PIXELS = true;
     Audio.initialize(window);
     this.loader = new Loader();
   }
