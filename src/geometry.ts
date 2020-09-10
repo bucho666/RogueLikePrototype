@@ -2,19 +2,44 @@ export interface Point {
   x: number; y: number;
 }
 
+export interface Size {
+  height: number; width: number;
+}
+
 export class Coord implements Point {
   constructor(public x: number=0, public y: number=0){}
 
-  distance(other: Point): Coord {
-    return new Coord(this.x - other.x, this.y - other.y)
+  minus(other: Point|Size): Coord {
+    const [x, y] = this.xy(other);
+    return new Coord(this.x - x, this.y - y)
   }
 
-  plus(other: Point): Coord {
-    return new Coord(this.x + other.x, this.y + other.y)
+  plus(other: Point|Size): Coord {
+    const [x, y] = this.xy(other);
+    return new Coord(this.x + x, this.y + y)
+  }
+
+  multiply(other: Point|Size): Coord {
+    const [x, y] = this.xy(other);
+    return new Coord(this.x * x, this.y * y);
+  }
+
+  distance(other: Point): number {
+    const [dx, dy] = this.minus(other).tuple;
+    return Math.sqrt(Math.pow(dx, 2) + Math.pow(dy, 2));
   }
 
   get tuple(): [number, number] {
     return [this.x, this.y];
+  }
+
+  private xy(v: Point|Size): [number, number] {
+    if ('x' in v) {
+      const p = v as Point;
+      return [p.x, p.y];
+    }
+    const size  = v as Size;
+    return [size.width, size.height];
   }
 }
 
@@ -29,11 +54,4 @@ export class Direction implements Point {
   static readonly DownLeft = new Direction(-1, 1, 135);
   static readonly UpLeft = new Direction(-1, -1, -135);
   constructor(readonly x: number=0, readonly y: number=0, readonly angle: number = 0){}
-}
-
-export class Size {
-  constructor(public width: number, public height: number) {}
-  get tuple(): [number, number] {
-    return [this.width, this.height]
-  }
 }

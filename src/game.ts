@@ -317,9 +317,9 @@ export class PointerState {
   constructor(readonly point: Coord, readonly start: Coord){
     if (start == undefined) return;
     const
-      [dx, dy] = this.point.distance(this.start).tuple;
+      [dx, dy] = this.point.minus(this.start).tuple;
       this.angle = (180 / Math.PI) * Math.atan2(dy, dx),
-      this.distance = Math.sqrt(Math.pow(dx, 2) + Math.pow(dy, 2));
+      this.distance = this.point.distance(this.start);
       this.swipeDirection = this.getSwipeDirection();
   }
 

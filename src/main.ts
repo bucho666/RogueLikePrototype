@@ -1,4 +1,4 @@
-import {Point, Coord, Direction} from './geometry';
+import {Size, Point, Coord, Direction} from './geometry';
 import {
   Audio,
   Container,
@@ -49,6 +49,13 @@ abstract class GameObject extends Sprite {
 
   set textureIndex(i: number) {
     this.texture = this.textures[i];
+  }
+
+  get size(): Size {
+    return {
+      width: this.width,
+      height: this.height
+    };
   }
 }
 
@@ -160,9 +167,20 @@ class Water extends Terrain {
     return new Water(this.id, this.tint);
   }
 }
+abstract class Character extends GameObject {
+  get isMonster(): boolean { return false; }
+  get gridCoord(): Coord {
+    return new Coord(this.x / this.width, this.y / this.height);
+  }
+}
 
-class Character extends GameObject {
+class Hero extends Character {
   public isMoving = false;
+  get isMonster(): boolean { return false; }
+}
+
+class Monster extends Character {
+  get isMonster(): boolean { return true; }
 }
 
 class Cell {
@@ -210,7 +228,7 @@ class MoveResult {
 
 class Stage extends Container {
   private cell: Cell[][];
-  private characterCoord = new Map<Character, Coord>();
+  private _monsters: Set<Monster>;
   constructor(width: number, height: number) {
     super();
     this.cell = Array.from(
@@ -218,6 +236,11 @@ class Stage extends Container {
         new Array<Cell>(width), ()=> new Cell()
       )
     );
+    this._monsters = new Set<Monster>();
+  }
+
+  get monsters(): IterableIterator<Monster> {
+    return this._monsters.values();
   }
 
   putTerrain(terrainName: string, point: Point) {
@@ -251,16 +274,19 @@ class Stage extends Container {
 
   putCharacter(ch: Character, coord: Coord) {
     this.addChild(ch);
-    this.characterCoord.set(ch, coord);
     this.at(coord).character = ch;
+    if (ch.isMonster) this._monsters.add(ch);
   }
 
   moveCharacter(ch: Character, direction: Direction): MoveResult {
     const
-      p = this.characterCoord.get(ch),
+      p = ch.gridCoord,
       to = p.plus(direction),
       toCell = this.at(to);
     if (toCell.isPassable == false) {
+      return new MoveResult(false, to, toCell);
+    }
+    if (toCell.character) {
       return new MoveResult(false, to, toCell);
     }
     this.at(p).removeCharacter();
@@ -279,7 +305,7 @@ class EasingMove extends Task {
   constructor(private target: Point, to: Coord, private timeLimit: number) {
     super();
     this.start = new Coord(target.x, target.y);
-    this.distance = to.distance(this.start);
+    this.distance = to.minus(this.start);
   }
 
   process() {
@@ -344,20 +370,103 @@ class Compass extends Container {
   }
 }
 
+class Context {
+  public pointer: PointerState;
+  constructor(
+    public scene: Scene,
+    public stage: Stage,
+    public hero: Hero) {}
+}
+
+class MoveHero {
+  constructor(private ctx: Context){};
+  execute() {
+    const
+      hero = this.ctx.hero,
+      direction = this.ctx.pointer.swipeDirection,
+      result = this.ctx.stage.moveCharacter(hero, direction);
+    if (result.isMoved == false) {
+      if (result.cell.isDoor) {
+        result.cell.openTerrain();
+        Audio.play('footstep');
+      }
+      return;
+    }
+    const to = result.coord.multiply(hero.size);
+    hero.isMoving = true;
+    this.addTask(new EasingMove(
+      hero, to,
+      Math.max(150, 600 - this.ctx.pointer.distance * 3))
+      .onFinish(()=> { hero.isMoving = false; }));
+  }
+
+  private addTask(task: Task) {
+    this.ctx.scene.addTask(task);
+  }
+}
+
 class TestScene extends Scene {
-  private pointer: PointerState;
-  private hero: Character;
-  private stage: Stage;
+  public swipePlay = 32;
+  private ctx: Context;
   private compass: Compass;
+  private moveHero: MoveHero;
   setup() {
-    this.hero = new Character('hero');
-    this.hero.tint = 0xc0c0c0;
-    this.hero.position.set(64, 64);
+    const
+      stage = this.buildStage(),
+      startPoint = new Coord(67, 2),
+      hero = new Hero('hero'),
+      dragon = new Monster('dragon'),
+      dragonPoint = new Coord(68, 3);
+    hero.tint = 0xc0c0c0;
+    stage.putCharacter(hero, startPoint);
+    hero.setPointByGrid(startPoint);
+    dragon.tint = 0xbb0000;
+    stage.putCharacter(dragon, dragonPoint);
+    dragon.setPointByGrid(dragonPoint);
+    this.ctx = new Context(this, stage, hero);
+    this.moveHero = new MoveHero(this.ctx);
+    this.update();
+    this.compass = new Compass(new Sprite('compass'), this.swipePlay, 0xffffff, 0.2);
+    this.compass.tint = hero.tint;
+    this.compass.visible = false;
+    this.addChild(stage)
+    this.addChild(this.compass);
+  }
+
+  pointermove(ps: PointerState) {
+    this.ctx.pointer = ps;
+  }
+
+  pointerup() {
+    this.ctx.pointer = undefined;
+    this.compass.visible = false;
+  }
+
+  update() {
+    this.adjustCamera();
+    if (this.ctx.pointer == undefined) return;
+    const swipeDir = this.ctx.pointer.swipeDirection;
+    if (this.ctx.pointer.start) {
+      this.compass.position.set(...this.ctx.pointer.start.tuple);
+      this.compass.setDirection(swipeDir).visible = true;;
+    }
+    if (this.ctx.hero.isMoving == false && this.ctx.pointer.distance >= this.swipePlay) {
+      this.moveHero.execute();
+    }
+  }
+
+  adjustCamera() {
+    const center = Scene.screen.center;
+    this.ctx.stage.x = -this.ctx.hero.x + center.x;
+    this.ctx.stage.y = -this.ctx.hero.y + center.y;
+  }
+
+  private buildStage(): Stage {
     Floor.regist('floor', 0x404040);
     Wall.regist('wall', 0xb3513a);
     Water.regist('water', 0x3d5aca);
     Door.regist('door', 0xa8842f);
-    this.stage = new MapDesign(new Map([
+    return new MapDesign(new Map([
       ['#', 'wall'],
       ['.', 'floor'],
       ['~', 'water'],
@@ -384,65 +493,6 @@ class TestScene extends Scene {
       '###.......#..................###########################################',
       '########################################################################'
     ]).create().setWallFace();
-    const startPoint = new Coord(67, 2);
-    this.stage.putCharacter(this.hero, startPoint);
-    this.hero.setPointByGrid(startPoint);
-    this.update();
-    this.compass = new Compass(new Sprite('compass'), 32, 0xffffff, 0.2);
-    this.compass.tint = this.hero.tint;
-    this.compass.visible = false;
-    this.addChild(this.stage)
-    this.addChild(this.compass);
-  }
-
-  pointermove(ps: PointerState) {
-    this.pointer = ps;
-  }
-
-  pointerup() {
-    this.pointer = undefined;
-    this.compass.visible = false;
-  }
-
-  update() {
-    this.adjustCamera();
-    if (this.pointer == undefined) return;
-    const swipeDir = this.pointer.swipeDirection;
-    if (this.pointer.start) {
-      this.compass.position.set(...this.pointer.start.tuple);
-      this.compass.setDirection(swipeDir).visible = true;;
-    }
-    if (this.hero.isMoving == false && this.pointer.distance >= 32) {
-      this.moveHero();
-    }
-  }
-
-  adjustCamera() {
-    const center = Scene.screen.center;
-    this.stage.x = -this.hero.x + center.x;
-    this.stage.y = -this.hero.y + center.y;
-  }
-
-  moveHero() {
-    const
-      direction = this.pointer.swipeDirection,
-      result = this.stage.moveCharacter(this.hero, direction);
-    if (result.isMoved == false) {
-      if (result.cell.isDoor) {
-        result.cell.openTerrain();
-        Audio.play('footstep');
-      }
-      return;
-    }
-    const to = new Coord(
-        this.hero.width * result.coord.x,
-        this.hero.height * result.coord.y
-    );
-    this.hero.isMoving = true;
-    this.addTask(new EasingMove(
-      this.hero, to,
-      Math.max(150, 600 - this.pointer.distance * 3))
-      .onFinish(()=> { this.hero.isMoving = false; }));
   }
 }
 
@@ -457,6 +507,7 @@ new Game({
     ['door', 'door.png', 16],
     ['water', 'water.png', 16],
     ['hero', 'hero.png', 16],
+    ['dragon', 'dragon.png', 16],
     ['compass', 'compass.png', 31],
   ]).registSound('resources', [
     ['footstep', 'footstep.wav'],
