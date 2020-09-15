@@ -1,3 +1,5 @@
+import {random} from './random';
+
 export interface Point {
   x: number; y: number;
 }
@@ -53,5 +55,14 @@ export class Direction implements Point {
   static readonly DownRight = new Direction(1, 1, 45);
   static readonly DownLeft = new Direction(-1, 1, 135);
   static readonly UpLeft = new Direction(-1, -1, -135);
+  static all = [
+    Direction.Up, Direction.Right, Direction.Down, Direction.Left,
+    Direction.UpRight, Direction.DownRight, Direction.DownLeft, Direction.UpLeft
+  ]
+
+  static random(): Direction {
+    return Direction.all[random(0, Direction.all.length)];
+  }
+
   constructor(readonly x: number=0, readonly y: number=0, readonly angle: number = 0){}
 }

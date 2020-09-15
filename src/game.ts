@@ -33,10 +33,9 @@ export abstract class Task {
 
   protected done() {
     this.isRunning = false;
-    this.finishEvent.forEach(e => e());
   }
 
-  onFinish(e: () => void):Task {
+  onFinish(e: () => void): Task {
     this.finishEvent.push(e);
     return this;
   }
@@ -64,6 +63,7 @@ export abstract class Task {
     if (this.isRunning || this.tasks.length > 1) {
       return this;
     }
+    this.finishEvent.forEach(e => e());
     if (this.next) {
       return this.next;
     }

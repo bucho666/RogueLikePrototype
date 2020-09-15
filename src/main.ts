@@ -175,7 +175,6 @@ abstract class Character extends GameObject {
 }
 
 class Hero extends Character {
-  public isMoving = false;
   get isMonster(): boolean { return false; }
 }
 
@@ -372,10 +371,32 @@ class Compass extends Container {
 
 class Context {
   public pointer: PointerState;
+  public idle: boolean = true;
   constructor(
     public scene: Scene,
     public stage: Stage,
     public hero: Hero) {}
+
+  get monsters(): IterableIterator<Monster> {
+    return this.stage.monsters;
+  }
+
+  addTask(task: Task) {
+    this.scene.addTask(task);
+  }
+}
+
+class MoveMonster {
+  constructor(private monster: Monster, private ctx: Context){};
+  execute(direction: Direction, time: number) {
+    const result = this.ctx.stage.moveCharacter(this.monster, direction);
+    if (result.isMoved == false) return;
+    const to = result.coord.multiply(this.monster.size);
+    this.ctx.idle = false;
+    this.ctx.addTask(
+      new EasingMove(this.monster, to, time)
+      .onFinish(() => { this.ctx.idle = true; }));
+  }
 }
 
 class MoveHero {
@@ -384,24 +405,45 @@ class MoveHero {
     const
       hero = this.ctx.hero,
       direction = this.ctx.pointer.swipeDirection,
+      time = Math.max(150, 600 - this.ctx.pointer.distance * 3),
       result = this.ctx.stage.moveCharacter(hero, direction);
     if (result.isMoved == false) {
       if (result.cell.isDoor) {
         result.cell.openTerrain();
         Audio.play('footstep');
+        this.moveMonsters(time);
+        return;
+      }
+      if (result.cell.character) {
+        const
+          target = result.cell.character,
+          fx = new Sprite('attack1', 0.2);
+        fx.loop = false;
+        fx.position = target.position.clone();
+        this.ctx.idle = false;
+        fx.onComplete = () => {
+          this.ctx.stage.removeChild(fx);
+          this.ctx.idle = true;
+          this.moveMonsters(time);
+        };
+        this.ctx.stage.addChild(fx);
+        fx.play();
+        Audio.play('slash');
+        return;
       }
       return;
     }
     const to = result.coord.multiply(hero.size);
-    hero.isMoving = true;
-    this.addTask(new EasingMove(
-      hero, to,
-      Math.max(150, 600 - this.ctx.pointer.distance * 3))
-      .onFinish(()=> { hero.isMoving = false; }));
+    this.ctx.idle = false;
+    this.ctx.addTask(new EasingMove(hero, to, time)
+                     .onFinish(() => { this.ctx.idle = true }));
+    this.moveMonsters(time);
   }
 
-  private addTask(task: Task) {
-    this.ctx.scene.addTask(task);
+  private moveMonsters(speed: number) {
+    for (const m of this.ctx.monsters) {
+      new MoveMonster(m, this.ctx).execute(Direction.random(), speed);
+    }
   }
 }
 
@@ -450,7 +492,7 @@ class TestScene extends Scene {
       this.compass.position.set(...this.ctx.pointer.start.tuple);
       this.compass.setDirection(swipeDir).visible = true;;
     }
-    if (this.ctx.hero.isMoving == false && this.ctx.pointer.distance >= this.swipePlay) {
+    if (this.ctx.idle && this.ctx.pointer.distance >= this.swipePlay) {
       this.moveHero.execute();
     }
   }
@@ -508,9 +550,11 @@ new Game({
     ['water', 'water.png', 16],
     ['hero', 'hero.png', 16],
     ['dragon', 'dragon.png', 16],
+    ['attack1', 'attack1.png', 16],
     ['compass', 'compass.png', 31],
   ]).registSound('resources', [
     ['footstep', 'footstep.wav'],
+    ['slash', 'slash.wav'],
   ]).registScene([
     ['testScene', new TestScene()],
     ['titleScene', new TitleScene()]
